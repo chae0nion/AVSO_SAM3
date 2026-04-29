@@ -1,20 +1,14 @@
 """
 SAM3 VOS with Detector-Assisted Cond-Frame Injection
 
-세 가지 독립 컴포넌트 (ablation study: A / B / C / A+B+C):
+두 가지 독립 컴포넌트:
 
-PartA (Proactive cond-frame promotion):
-  - obj_score >= CONF_OBJ_THRESH AND min(iou_scores_all) >= CONF_IOU_THRESH 가 CONF_STREAK_THRESH 프레임 연속
-    → 현재 프레임을 non_cond → cond_frame으로 승격
-  - COND_MIN_INTERVAL 이상 간격으로만 승격 (cond_frame 과잉 방지)
-  - PartB 활성 시 post_occ_skip 구간에서는 streak 누적 차단
-
-PartB (Post-occlusion memory protection):
+Component2 (Post-occlusion memory protection):
   - obj_score < 0 이 OCC_MIN_FRAMES 프레임 연속 → is_occluded 선언
   - 복구(obj_score >= 0) 후 POST_OCC_SKIP 프레임 동안 remove_from_non_cond
     (복구 직후 불안정한 프레임이 non_cond 메모리에 쌓이는 것을 방지)
 
-PartC (Detector-assisted cond-frame):
+Component1 (Detector-assisted cond-frame):
   - 트리거 조건:
       1) cand_pairwise_iou의 임의 쌍이 PAIR_IOU_THRESH 미만 (후보 mask가 발산)
       2) iou_score_max >= IOU_MAX_THRESH (트래커가 최선 후보를 확신)
@@ -330,17 +324,15 @@ def vos_det_per_object(
     use_all_masks=False,
     offload_video_to_cpu=False,
     save_det_masks=False,
-    enable_parta=True,
-    enable_partb=True,
-    enable_partc=True,
+    enable_component2=True,
+    enable_component1=True,
     compute_blur=False,
     post_occ_skip=None,
 ):
     """
     Detector-assisted VOS: object별 순차 추론.
-    PartA: 고신뢰 streak → non_cond → cond 승격
-    PartB: post-occ 복구 직후 remove_from_non_cond
-    PartC: detector distractor 검증 → non_cond → cond 승격
+    Component2: post-occ 복구 직후 remove_from_non_cond
+    Component1: detector distractor 검증 → non_cond → cond 승격
     """
     video_path = os.path.join(video_dir, video_name)
     ann_video_dir = os.path.join(ann_dir, video_name)
@@ -386,17 +378,16 @@ def vos_det_per_object(
         print(f"  [skip] No valid annotation frames for {video_name}")
         return
 
-    # ── Detector input_batch 빌드 (PartC 또는 save_det_masks 사용 시에만) ──
+    # ── Detector input_batch 빌드 (Component1 또는 save_det_masks 사용 시에만) ──
     detector_input_batch = (
         build_detector_input_batch(inference_state, device)
-        if (enable_partc or save_det_masks) else None
+        if (enable_component1 or save_det_masks) else None
     )
 
     # ── 활성화 플래그 ──
-    ENABLE_PARTA = enable_parta   # 고신뢰 streak → cond 승격
-    ENABLE_PARTB = enable_partb   # post-occ 복구 직후 remove_from_non_cond
-    ENABLE_PARTC = enable_partc   # detector distractor → cond 승격
-    ENABLE_OCC   = ENABLE_PARTA or ENABLE_PARTB   # occlusion 상태 머신 실행 여부
+    ENABLE_COMPONENT2 = enable_component2   # post-occ 복구 직후 remove_from_non_cond
+    ENABLE_COMPONENT1 = enable_component1   # detector distractor → cond 승격
+    ENABLE_OCC   = ENABLE_COMPONENT2   # occlusion 상태 머신 실행 여부
 
     # ── 하이퍼파라미터 ──
     # Part 1: proactive cond-frame promotion
@@ -522,9 +513,8 @@ def vos_det_per_object(
             )
 
             # ────────────────────────────────────────────────────
-            # PartA / PartB: occlusion 상태 머신
-            #   PartA: 고신뢰 streak → promote_to_cond_frame
-            #   PartB: post-occ 복구 직후 → remove_from_non_cond
+            # Component2: occlusion 상태 머신
+            #   Component2: post-occ 복구 직후 → remove_from_non_cond
             # ────────────────────────────────────────────────────
             p1_action = "none"
 
@@ -536,7 +526,7 @@ def vos_det_per_object(
                     if not is_occluded and occ_frame_count >= OCC_MIN_FRAMES:
                         is_occluded = True
                         p1_action = "occ_start"
-                        print(f"  [PartB] {video_name} obj={obj_id} frame={frame_names[out_frame_idx]} "
+                        print(f"  [Component2] {video_name} obj={obj_id} frame={frame_names[out_frame_idx]} "
                               f"→ occlusion declared (count={occ_frame_count})")
                     elif is_occluded:
                         p1_action = "occluded"
@@ -545,69 +535,41 @@ def vos_det_per_object(
                 else:
                     # visible 상태
                     if is_occluded:
-                        # 복구: post_occ_skip 설정 (PartB 활성 시에만)
-                        post_occ_skip = POST_OCC_SKIP if ENABLE_PARTB else 0
+                        # 복구: post_occ_skip 설정 (Component2 활성 시에만)
+                        post_occ_skip = POST_OCC_SKIP if ENABLE_COMPONENT2 else 0
                         is_occluded = False
                         occ_frame_count = 0
                         high_conf_streak = 0
                         event_log_rows.append([
-                            frame_stem, int(obj_id), "PartB", "occ_recovered",
+                            frame_stem, int(obj_id), "Component2", "occ_recovered",
                             f"post_occ_skip={post_occ_skip}",
                         ])
-                        print(f"  [PartB] {video_name} obj={obj_id} frame={frame_names[out_frame_idx]} "
+                        print(f"  [Component2] {video_name} obj={obj_id} frame={frame_names[out_frame_idx]} "
                               f"→ occlusion recovered, post_occ_skip={post_occ_skip}")
                     else:
                         occ_frame_count = 0
 
                     if post_occ_skip > 0:
-                        # PartB: 복구 직후 cooldown → remove_from_non_cond + streak 차단
+                        # Component2: 복구 직후 cooldown → remove_from_non_cond + streak 차단
                         post_occ_skip -= 1
                         high_conf_streak = 0
                         remove_from_non_cond(inference_state, out_frame_idx)
                         p1_action = "post_occ_skip"
-                    elif (ENABLE_PARTA
-                            and iou_scores_all is not None
-                            and obj_score >= CONF_OBJ_THRESH
-                            and float(iou_scores_all[0].min().item()) >= CONF_IOU_THRESH):
-                        # PartA: 고신뢰 streak 누적
-                        high_conf_streak += 1
-                        if (high_conf_streak >= CONF_STREAK_THRESH
-                                and out_frame_idx - last_cond_frame_idx >= COND_MIN_INTERVAL):
-                            if promote_to_cond_frame(inference_state, out_frame_idx):
-                                last_cond_frame_idx = out_frame_idx
-                                high_conf_streak = 0
-                                p1_action = "cond_promoted"
-                                n_cond = len(inference_state["output_dict"]["cond_frame_outputs"])
-                                print(f"  [PartA] {video_name} obj={obj_id} "
-                                      f"frame={frame_names[out_frame_idx]} "
-                                      f"→ promoted to cond (total_cond={n_cond})")
-                                event_log_rows.append([
-                                    frame_stem, int(obj_id), "PartA", "cond_promoted",
-                                    f"streak={CONF_STREAK_THRESH}",
-                                    f"obj_score={obj_score:.4f}",
-                                    f"iou_min={float(iou_scores_all[0].min().item()):.4f}",
-                                    f"total_cond={n_cond}",
-                                ])
-                            else:
-                                high_conf_streak = 0
-                                p1_action = "promote_skipped_not_in_non_cond"
-                        else:
-                            p1_action = f"streak={high_conf_streak}"
                     else:
                         high_conf_streak = 0
                         p1_action = "low_conf"
 
             # ────────────────────────────────────────────────────
-            # PartC: detector distractor 감지 → cond_frame 승격
+            # Component1: detector distractor 감지 → cond_frame 승격
             # ────────────────────────────────────────────────────
-            p2_action = "none" if ENABLE_PARTC else "disabled"
+            p2_action = "none" if ENABLE_COMPONENT1 else "disabled"
             p2_min_pair_iou = None
             p2_det_called = False
             p2_det_n_boxes = None
             p2_det_at_iou_max = None
             p2_distractor_found = None
 
-            if (ENABLE_PARTC
+            if (ENABLE_COMPONENT1
                     and det_cooldown == 0
                     and post_occ_skip == 0
                     and visual_prompt is not None
@@ -825,9 +787,8 @@ def parse_args():
     parser.add_argument("--offload_video_to_cpu", action="store_true")
     parser.add_argument("--save_det_masks", action="store_true",
                         help="매 프레임 detector mask도 빨강 contour PNG로 저장")
-    parser.add_argument("--no_parta", action="store_true", help="PartA 비활성화 (고신뢰 streak → cond 승격)")
-    parser.add_argument("--no_partb", action="store_true", help="PartB 비활성화 (post-occ 복구 직후 저장 방지)")
-    parser.add_argument("--no_partc", action="store_true", help="PartC 비활성화 (detector distractor → cond 승격)")
+    parser.add_argument("--no_component2", action="store_true", help="Component2 비활성화 (post-occ 복구 직후 저장 방지)")
+    parser.add_argument("--no_component1", action="store_true", help="Component1 비활성화 (detector distractor → cond 승격)")
     parser.add_argument("--post_occ_skip", type=int, default=None, help="post-occ 스킵 프레임 수 (미지정 시 기본값 5)")
     parser.add_argument("--blur", action="store_true", help="blur 분석 활성화 (scores.csv에 laplacian/fft 추가, 느림)")
     parser.add_argument("--device", type=int, default=None,
@@ -882,9 +843,8 @@ def main():
                 use_all_masks=args.use_all_masks,
                 offload_video_to_cpu=args.offload_video_to_cpu,
                 save_det_masks=args.save_det_masks,
-                enable_parta=not args.no_parta,
-                enable_partb=not args.no_partb,
-                enable_partc=not args.no_partc,
+                enable_component2=not args.no_component2,
+                enable_component1=not args.no_component1,
                 compute_blur=args.blur,
                 post_occ_skip=args.post_occ_skip,
             )
