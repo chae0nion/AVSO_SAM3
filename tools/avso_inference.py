@@ -518,9 +518,11 @@ def vos_det_per_object(
             # ────────────────────────────────────────────────────
             p1_action = "none"
 
+            if obj_score is not None and obj_score <= 0:
+                remove_from_non_cond(inference_state, out_frame_idx)
+
             if ENABLE_OCC and obj_score is not None:
                 if obj_score < OCC_SCORE_THRESH:
-                    # obj_score < 0: propagator가 non_cond에 저장 안 함 (remove 불필요)
                     occ_frame_count += 1
                     high_conf_streak = 0
                     if not is_occluded and occ_frame_count >= OCC_MIN_FRAMES:
