@@ -331,6 +331,15 @@ architecture, supporting video segmentation and interactive refinement.
 </table>
 </div>
 
+## LVOS Evaluation Results
+
+Evaluation on the LVOS validation set using the DAVIS J&F protocol. J = region similarity (Jaccard), F = boundary accuracy, V = temporal instability (lower is better).
+
+| Configuration | LVOS v2 J&F | LVOS v2 J | LVOS v2 F | LVOS v2 V ↓ | LVOS v1 J&F | LVOS v1 J | LVOS v1 F | LVOS v1 V ↓ |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Detector + Tracker (SAM3) | **0.892** | **0.854** | **0.931** | **0.133** | **0.868** | **0.812** | **0.924** | **0.177** |
+| Text Prompt Only | 0.860 | 0.804 | 0.916 | 0.179 | - | - | - | - |
+
 ## SA-Co Dataset
 
 We release 2 image benchmarks, [SA-Co/Gold](scripts/eval/gold/README.md) and
