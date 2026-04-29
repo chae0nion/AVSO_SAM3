@@ -4,9 +4,43 @@ SAM3 기반 occlusion-robust video object segmentation. 시각적으로 유사�
 
 ## LVOS Evaluation Results
 
-Evaluation on the LVOS validation set using the DAVIS J&F protocol. J = region similarity (Jaccard), F = boundary accuracy (higher is better).
-
-|  | LVOSv1 J&F | LVOSv1 J | LVOSv1 F | LVOSv2 J&F | LVOSv2 J | LVOSv2 F |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| SAM3 | 84.0 | 78.5 | 89.4 | 88.5 | 84.7 | 92.3 |
-| **Ours** | **86.8** | **81.2** | **92.4** | **89.2** | **85.4** | **93.1** |
+<div align="center">
+<table>
+  <thead>
+    <tr>
+      <th></th>
+      <th colspan="3" align="center">LVOSv1</th>
+      <th colspan="3" align="center">LVOSv2</th>
+    </tr>
+    <tr>
+      <th></th>
+      <th align="center">J&amp;F</th>
+      <th align="center">J</th>
+      <th align="center">F</th>
+      <th align="center">J&amp;F</th>
+      <th align="center">J</th>
+      <th align="center">F</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>SAM3</td>
+      <td align="center">84.0</td>
+      <td align="center">78.5</td>
+      <td align="center">89.4</td>
+      <td align="center">88.5</td>
+      <td align="center">84.7</td>
+      <td align="center">92.3</td>
+    </tr>
+    <tr>
+      <td><strong>Ours</strong></td>
+      <td align="center"><strong>86.8</strong></td>
+      <td align="center"><strong>81.2</strong></td>
+      <td align="center"><strong>92.4</strong></td>
+      <td align="center"><strong>89.2</strong></td>
+      <td align="center"><strong>85.4</strong></td>
+      <td align="center"><strong>93.1</strong></td>
+    </tr>
+  </tbody>
+</table>
+</div>
